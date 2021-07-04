@@ -11,6 +11,7 @@ export const Container = styled.TouchableOpacity.attrs({
   align-items: center;
 
   border-radius: 5px;
+  padding: 18px;
 `;
 
 export const Category = styled.Text`
