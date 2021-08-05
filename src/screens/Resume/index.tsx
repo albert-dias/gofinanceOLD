@@ -1,29 +1,40 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {VictoryPie } from 'victory-native';
+import { VictoryPie } from 'victory-native';
 
 import { HistoryCard } from '../../components/HistoryCard';
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs"
+import { addMonths, subMonths, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale'
+
 import { useTheme } from 'styled-components';
 
-import { 
+import {
     Container,
     Header,
     Title,
     Content,
-    ChartContainer
+    ChartContainer,
+    MonthSelect,
+    MonthSelectButton,
+    MonthSelectIcon,
+    Month,
+    LoadingContainer,
 } from './styles';
 import { categories } from '../../utils/categories';
 import { RFValue } from 'react-native-responsive-fontsize';
+import { ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
-interface TransactionData{
+interface TransactionData {
     type: 'positive' | 'negative';
-    name:string;
+    name: string;
     amount: string;
     category: string;
     date: string;
 }
 
-interface CategoryData{
+interface CategoryData {
     key: string;
     name: string;
     total: number;
@@ -33,40 +44,59 @@ interface CategoryData{
 }
 
 
-export function Resume(){
+export function Resume() {
+    const [isLoading, setIsLoading] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(new Date());
     const [totalByCategoies, setTotalByCategories] = useState<CategoryData[]>([])
+
     const theme = useTheme();
 
-    async function loadData(){
+    function handleDateChange(action: 'next' | 'prev') {
+        
+        if (action === 'next') {
+            setSelectedDate(addMonths(selectedDate, 1));
+        } else {
+            setSelectedDate(subMonths(selectedDate, 1));
+        }
+
+    }
+
+    async function loadData() {
+        setIsLoading(true);
+
         const dataKey = "@gofinance:transactions";
         const response = await AsyncStorage.getItem(dataKey);
         const responseFormatted = response ? JSON.parse(response) : [];
 
         const expensives = responseFormatted
-        .filter((expensive: TransactionData) => expensive.type === 'negative')
-        
-        const expensivesTotal = expensives
-        .reduce((acumllator: number, expensive: TransactionData) => {
-            return acumllator + Number(expensive.amount)
-        }, 0)
+            .filter((expensive: TransactionData) =>
+                expensive.type === 'negative' &&
+                new Date(expensive.date).getMonth() === selectedDate.getMonth() &&
+                new Date(expensive.date).getFullYear() === selectedDate.getFullYear()
+            )
 
-        const totalByCategory: CategoryData[]= [];
+        const expensivesTotal = expensives
+            .reduce((acumllator: number, expensive: TransactionData) => {
+                return acumllator + Number(expensive.amount)
+            }, 0)
+
+        const totalByCategory: CategoryData[] = [];
 
         categories.forEach(category => {
             let categorySum = 0;
 
             expensives.forEach((expensive: TransactionData) => {
-                if (expensive.category === category.key){
+                if (expensive.category === category.key) {
                     categorySum += Number(expensive.amount);
                 }
             });
 
-            if(categorySum > 0){
+            if (categorySum > 0) {
                 const totalFormatted = categorySum
-                .toLocaleString('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL'
-                })
+                    .toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL'
+                    })
 
                 const percent = `${(categorySum / expensivesTotal * 100).toFixed(0)}%`;
 
@@ -79,52 +109,76 @@ export function Resume(){
                     percent,
                 });
             }
-            
+
         })
         setTotalByCategories(totalByCategory)
+        setIsLoading(false)
     }
 
-    useEffect(() => {
+    useFocusEffect(useCallback(() => {
         loadData();
-    }, [])
+    }, [selectedDate]))
 
-    return(
+    return (
         <Container>
             <Header>
                 <Title>Resumo por categoria</Title>
             </Header>
-
-            <Content >
-                <ChartContainer>
-                    <VictoryPie 
-                        data={totalByCategoies}
-                        colorScale={totalByCategoies.map(category => category.color)}
-                        style={{
-                            labels: { 
-                                fontSize: RFValue(18),
-                                fontWeight: 'bold',
-                                fill: theme.colors.shape,
-                            }
-                        }}
-                        labelRadius={80}
-                        x="percent"
-                        y="total"
-                    />
-                </ChartContainer>
-                
-                {  
-                    totalByCategoies.map(item => (
-                        <HistoryCard 
-                            key={item.key}
-                            color={item.color}
-                            amount={item.totalFormatted}
-                            title={item.name}
+            {
+                isLoading ?
+                    <LoadingContainer>
+                        <ActivityIndicator
+                            color={theme.colors.primary}
                         />
-                    ))
-                }
-            </Content>
+                    </LoadingContainer>
+                    :
 
-            
+                    <Content
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={{
+                            paddingBottom: useBottomTabBarHeight(),
+                            paddingHorizontal: 24,
+                        }}
+                    >
+                        <MonthSelect>
+                            <MonthSelectButton onPress={() => handleDateChange('prev')}>
+                                <MonthSelectIcon name="chevron-left" />
+                            </MonthSelectButton>
+                            <Month>{format(selectedDate, 'MMMM, yyyy', { locale: ptBR })}</Month>
+                            <MonthSelectButton onPress={() => handleDateChange('next')}>
+                                <MonthSelectIcon name="chevron-right" />
+                            </MonthSelectButton>
+                        </MonthSelect>
+                        <ChartContainer>
+                            <VictoryPie
+                                data={totalByCategoies}
+                                colorScale={totalByCategoies.map(category => category.color)}
+                                style={{
+                                    labels: {
+                                        fontSize: RFValue(18),
+                                        fontWeight: 'bold',
+                                        fill: theme.colors.shape,
+                                    }
+                                }}
+                                labelRadius={80}
+                                x="percent"
+                                y="total"
+                            />
+                        </ChartContainer>
+
+                        {
+                            totalByCategoies.map(item => (
+                                <HistoryCard
+                                    key={item.key}
+                                    color={item.color}
+                                    amount={item.totalFormatted}
+                                    title={item.name}
+                                />
+                            ))
+                        }
+                    </Content>
+
+            }
         </Container>
     )
 }
