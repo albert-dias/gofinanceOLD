@@ -10,7 +10,7 @@ export const Container = styled.View`
 
 export const Header = styled.View`
     background-color: ${({ theme }) => theme.colors.primary};
-    margin-top: ${getStatusBarHeight()}px;
+    padding-top: ${getStatusBarHeight()}px;
 
     width: 100%;
     height: ${RFValue(113)}px;
